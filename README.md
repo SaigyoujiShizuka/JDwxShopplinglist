@@ -1,0 +1,2 @@
+# JDwxShopplinglist
+简单的爬取京东万象商品信息和购买记录的爬虫
