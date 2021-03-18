@@ -111,7 +111,11 @@ class JdSpider():
         newtag.append(newword)#将tag储存在list中
         jtag=json.dumps(newtag,ensure_ascii=False)#list转json
         shop=[link,name,jprice,company,view,buy,collection,jtag]
-        SQLOS.InsertShop(shop)
+        if(SQLOS.InsertShop(shop)==0):#遇到重复的直接跳过，不爬购买记录了
+            self.browser.close()
+            self.browser.switch_to.window(self.browser.window_handles[0])
+            return 1
+        
         
         
         
