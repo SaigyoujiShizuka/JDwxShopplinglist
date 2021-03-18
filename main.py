@@ -15,7 +15,7 @@ import pymysql.cursors
 from functools import reduce
 import traceback
 
-def str2int(s):#字符串转数字
+def str2int(s):
     def fn(x,y):
         return x*10+y
     def char2num(s):
@@ -46,21 +46,36 @@ class JdSpider():
         name=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//h1[@class="fl"]')))#爬名称
         name=[item.text for item in name]
         name=name[0]
-        
-
-        price=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//span[@class="price-num"]')))
-
-        price=[item.get_attribute('innerText') for item in price]#忽略不可见，爬全部价格
-        price=[item for item in price]
         newprice={}
-        if(price[0]=='免费'):#免费的商品一般会有次数限制
-            num=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//span[@class="mianfei-tag"]')))
-            num=[item.text for item in num]
-            newprice={price[0]:num[0]}
-        else:
+        try:
+            price=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//span[@class="price-num"]')))
+            price=[item.get_attribute('innerText') for item in price]#忽略不可见，爬全部价格
+            price=[item for item in price]
+            if(price[0]=='免费'):#免费的商品一般会有次数限制
+                num=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//span[@class="mianfei-tag"]')))
+                num=[item.text for item in num]
+                newprice={price[0]:num[0]}
+            else:
+                num=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//div[contains(@class,"price-times one-item")]')))
+                num=[item.text for item in num]
+                newnum=[]
+                for item in num:#爬多少钱可以买多少
+                    if(re.search(r'\d',item)):
+                        newnum.append(re.search(r"\d+\.?\d*",str(item)).group())#不看后面的约等于，只取前面的
+                        if("万" in item):
+                            newnum[-1]+='0000'#把汉字万换成10000乘上去
+                    else:
+                        newnum.append(item)#不含数字，/周/月这样的
+                num=newnum
+                index=0
+                for item in price:
+                    newprice[str(re.search(r'\d+',item).group())]=str(num[index])
+                    index-=-1
+        except selenium.common.exceptions.TimeoutException:#遇到特殊商品了，此时商品规格就是价格
             num=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//div[contains(@class,"price-times one-item")]')))
             num=[item.text for item in num]
             newnum=[]
+            
             for item in num:#爬多少钱可以买多少
                 if(re.search(r'\d',item)):
                     newnum.append(re.search(r"\d+\.?\d*",str(item)).group())#不看后面的约等于，只取前面的
@@ -69,10 +84,10 @@ class JdSpider():
                 else:
                     newnum.append(item)#不含数字，/周/月这样的
             num=newnum
-            index=0
-            for item in price:
-                newprice[str(re.search(r'\d+',item).group())]=str(num[index])
-                index-=-1
+            for item in newnum:
+                newprice[item]=str(item)
+            
+        
         jprice=json.dumps(newprice)#将dic转化为json格式的数据
         company=self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//span[@class="blue"]')))
         company=[item.text for item in company]
@@ -111,13 +126,10 @@ class JdSpider():
         newtag.append(newword)#将tag储存在list中
         jtag=json.dumps(newtag,ensure_ascii=False)#list转json
         shop=[link,name,jprice,company,view,buy,collection,jtag]
-        if(SQLOS.InsertShop(shop)==0):#遇到重复的直接跳过，不爬购买记录了
+        if(SQLOS.InsertShop(shop)==0):
             self.browser.close()
             self.browser.switch_to.window(self.browser.window_handles[0])
             return 1
-        
-        
-        
         
         ishistorylast=0
         try:
@@ -136,7 +148,7 @@ class JdSpider():
         types=[]
         newid=[]
         count=0
-        while (ishistorylast!=1):#爬购买记录
+        while (ishistorylast!=1):
 
             try:
                 time.sleep(1)
@@ -161,16 +173,15 @@ class JdSpider():
                 ishistorylast=1
             except selenium.common.exceptions.StaleElementReferenceException:
                 self.wait.until(EC.element_to_be_clickable((By.XPATH,'//li[@id="detailTab6"]'))).click()
-               
 
             try:
-                self.wait.until(EC.element_to_be_clickable((By.XPATH,'//input[@class="btn-vice script-go"]')))
                 time.sleep(1)
-                self.browser.find_element_by_xpath('//a[@title="下一页"]').click()
-                time.sleep(1)
+                self.wait.until(EC.element_to_be_clickable((By.XPATH,'//a[@title="下一页"]'))).click()
             except selenium.common.exceptions.NoSuchElementException:
+                print(1)
                 ishistorylast=1
             except selenium.common.exceptions.TimeoutException:
+                print(2)
                 ishistorylast=1
         history=zip(newid,customers,dates,types)
         SQLOS.InsertHistory(list(history))
@@ -184,18 +195,9 @@ class JdSpider():
             skus = self.wait.until(EC.presence_of_all_elements_located((By.XPATH,'//li[@class="boder_v1"]')))
             skus = [item.find_element_by_css_selector('a').get_attribute('href') for item in skus]
             links = skus#首页商品链接
-            names=[]#商品名称
-            prices=[]#价格list
-            companys=[]#公司
-            views=[]#浏览
-            buys=[]#购买次数
-            collections=[]#收藏次数
-            tags=[]#tag列表
             for link in links:
                 self.parse_shop(link)
                 
-            self.shopdata=zip(links,names,prices,companys,views,buys,collections,tags)
-            self.historydata = zip(historysid,historyscustomer,historysdates,historystype)
         except selenium.common.exceptions.TimeoutException:
             print('parse_page: TimeoutException')
             self.parse_page()
@@ -205,7 +207,8 @@ class JdSpider():
 
     def turn_page(self):
         try:
-            self.wait.until(EC.element_to_be_clickable((By.XPATH,'//a[@title="下一页"]'))).click()
+            next_btn=self.wait.until(EC.element_to_be_clickable((By.XPATH,'//a[@title="下一页"]')))
+            self.browser.execute_script("arguments[0].click();", next_btn)
             time.sleep(1)
             self.browser.execute_script("window.scrollTo(0,document.body.scrollHeight)")
             time.sleep(2)
@@ -235,7 +238,7 @@ class JdSpider():
         time.sleep(1)
         self.browser.execute_script("window.scrollTo(0,document.body.scrollHeight)")
         time.sleep(2)
-        count = 0
+        count =str2int(self.beginpage)
         while not (count==self.endpage or self.isLast==True):
             count += 1
             print('正在爬取第 ' + str(count) + ' 页......')
@@ -249,10 +252,10 @@ class SQLOS():
         pass
     
     def Connect_to_DB():
-        connection = pymysql.connect(host='',#数据库地址
-                        user='',#数据库用户
-                        password='',#密码
-                        db='',#数据秒
+        connection = pymysql.connect(host='rm-bp10wr08s7nl319dcyo.mysql.rds.aliyuncs.com',
+                        user='jdwx_user',
+                        password='5^5*RUhD0QyQopX6',
+                        db='jdwxasset',
                         charset='utf8mb4',
                         cursorclass=pymysql.cursors.DictCursor)
         return connection#链接服务器 返回一个connect
