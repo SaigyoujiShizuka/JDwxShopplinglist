@@ -86,6 +86,10 @@ class JdSpider():
             num=newnum
             for item in newnum:
                 newprice[item]=str(item)
+        except IndexError:#遇到数组越界 直接关闭页面下一个
+            self.browser.close()
+            self.browser.switch_to.window(self.browser.window_handles[0])
+
             
         
         jprice=json.dumps(newprice)#将dic转化为json格式的数据
@@ -184,8 +188,12 @@ class JdSpider():
                 print(2)
                 ishistorylast=1
         history=zip(newid,customers,dates,types)
-        SQLOS.InsertHistory(list(history))
-        
+        try:
+            SQLOS.InsertHistory(list(history))
+        except IndexError:#遇到数组越界 直接关闭页面下一个
+            self.browser.close()
+            self.browser.switch_to.window(self.browser.window_handles[0])
+
         self.browser.close()
         self.browser.switch_to.window(self.browser.window_handles[0])
 
